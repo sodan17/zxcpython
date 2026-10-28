@@ -1,0 +1,5 @@
+print('My name is Egor')
+print('I am 16')
+print('I live in Rostov-na-Dony')
+print('I want to learn the programs')
+print('21.09.2026')
