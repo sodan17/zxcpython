@@ -1,41 +1,46 @@
+import sqlite3
 from flask import Flask, request, redirect, url_for
 
 app = Flask(__name__)
 
-try:
-    with open('task.txt', 'r', encoding='utf-8') as file:
-        tasks = [line.strip() for line in file.readlines()]
-except FileNotFoundError:
-    tasks = []
-
 @app.route('/', methods=['GET', 'POST'])
 def home():
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
     # Если пользователь нажал кнопку и отправил данные (POST)
     if request.method == 'POST':
         new_task = request.form.get('task_name')
-        if new_task:  # Если поле не пустое
-            tasks.append(new_task)
-            with open('tasks.txt', 'a', encoding='utf-8') as file:
-                file.write(f'{new_task}\n')
-            print(f"Добавлена новая задача: {new_task}") # Выведем в терминал
+        if new_task: # Если поле не пустое
+            # Добавляем в базу (SQL-команда INSERT)
+            cursor.execute('INSERT INTO tasks (title) VALUES (?)', (new_task,))
+            conn.commit()
+
+     # Получаем все задачи из базы (SQL-команда SELECT)
+    cursor.execute('SELECT * FROM tasks')
+    db_tasks = cursor.fetchall()
+    conn.close()
 
     # Генерируем HTML, чтобы показать задачи
     task_list_html = ""
-    for index, task in enumerate(tasks):
-        # Проверяем, выполнена ли задача
-        if task.startswith("[+] "):
-            style = "text-decoration: line-through; color: #888;"
+
+    for db_task in db_tasks:
+        task_id = db_task[0]
+        task_title = db_task[1]
+        task_is_done = db_task[2]
+
+        if task_is_done == 1:
+            style = 'text-decoration: line-through; color: #888;'
         else:
             style = ""
 
         task_list_html += f"""
         <li style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="{style}">{task}</span>
+            <span style="{style}">{task_title}</span>
             <div style="display: flex; gap: 10px;">
-                <form action="/delete/{index}" method="POST" style="margin: 0;">
+                <form action="/delete/{task_id}" method="POST" style="margin: 0;">
                     <button type="submit" style="background-color: #e74c3c; margin: 0;">✖</button>
                 </form>
-                <form action="/complete/{index}" method="POST" style="margin: 0;">
+                <form action="/complete/{task_id}" method="POST" style="margin: 0;">
                     <button type="submit" style="background-color: #2ecc71; margin: 0;">✔</button>
                 </form>
             </div>
@@ -100,34 +105,34 @@ def home():
     """
     return html_page
 
-@app.route('/delete/<int:task_index>', methods=['POST'])
-def delete_task(task_index):
-    # Проверяем, существует ли такая задача
-    if 0 <= task_index < len(tasks):
-        # Удаляем задачу из списка в памяти
-        deleted_task = tasks.pop(task_index)
-        print(f"Удалена задача: {deleted_task}")
-        
-        # Перезаписываем файл без этой задачи
-        with open('tasks.txt', 'w', encoding='utf-8') as file:
-            for task in tasks:
-                file.write(f"{task}\n")
-                
+@app.route('/delete/<int:task_id>', methods=['POST'])
+def delete_task(task_id):
+
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+
+    conn.commit()
+    conn.close()
+
     # Возвращаемся на главную страницу
     return redirect(url_for('home'))
 
-@app.route('/complete/<int:task_index>', methods=['POST'])
-def complete_task(task_index):
-    if 0 <= task_index < len(tasks):
-        # Если задача еще не выполнена, добавляем маркер
-        if not tasks[task_index].startswith("[+] "):
-            tasks[task_index] = "[+] " + tasks[task_index]
-        
-        # Перезаписываем файл
-        with open('tasks.txt', 'w', encoding='utf-8') as file:
-            for task in tasks:
-                file.write(f"{task}\n")
-                
+@app.route('/complete/<int:task_id>', methods=['POST'])
+def complete_task(task_id):
+    # 1. Подключаемся к базе
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+
+    # 2. Говорим базе: "Обнови строку, установи is_done = 1, где id равен task_id"
+    cursor.execute("UPDATE tasks SET is_done = 1 WHERE id = ?", (task_id,))
+
+    # 3. Сохраняем и закрываем
+    conn.commit()
+    conn.close()
+
+    # 4. Возвращаемся на главную
     return redirect(url_for('home'))
 
 if __name__ == '__main__':
